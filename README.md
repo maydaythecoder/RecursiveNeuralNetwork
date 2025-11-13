@@ -8,6 +8,7 @@ RecursiveNeuralNetwork is a NumPy-only sandbox for experimenting with fully-conn
 
 - **Typed NumPy primitives** for activations, losses, and optimizers.
 - **Modular layer graph** built from reusable `Node`, `InputLayer`, `HiddenLayer`, and `OutputLayer` classes.
+- **Beginner-friendly naming** (`input_batch`, `weight_matrix`, `parameter_pairs`, etc.) so the forward/backward flow reads like plain English.
 - **Training utilities** including a gradient checker and a self-contained demo on a synthetic dataset.
 - **Documentation** detailing the architecture and reasoning behind each component.
 
@@ -24,13 +25,17 @@ RecursiveNeuralNetwork is a NumPy-only sandbox for experimenting with fully-conn
 
 ## Usage
 
-Run the demo training loop to verify the setup and see the training utilities in action:
+### Quick Start
+
+Verify your environment and watch the network train on the synthetic dataset:
 
 ```bash
+cd /Users/muhyadinmohamed/Documents/Development/Python/RecursiveNeuralNetwork
+source venv/bin/activate
 python -m structure.network
 ```
 
-The script prints a gradient check score, reports training loss per epoch, and outputs the final training accuracy on the synthetic dataset. Use this module as a template when wiring custom datasets or experimenting with deeper networks.
+The module prints the gradient check score, epoch-level training losses, and final accuracy. Use this as a template when wiring custom datasets or experimenting with deeper networks.
 
 ## Project Structure
 
@@ -40,10 +45,10 @@ logic/
   lossFunction.py         # Loss functions and gradients
   Optimizer.py            # Optimizers (currently SGD with clipping)
 structure/
-  InputLayer.py           # Input validation and passthrough
-  Node.py                 # Parameter container with He initialization
-  hiddenLayer.py          # Dense hidden layer with activation
-  outputLayer.py          # Output layer and prediction utilities
+  InputLayer.py           # Input validation and input_batch passthrough cache
+  Node.py                 # Parameter container (`weight_matrix`/`bias_vector`) with He initialization
+  hiddenLayer.py          # Dense hidden layer with activation and optimizer-friendly parameter_pairs
+  outputLayer.py          # Output layer, prediction utilities, and activation-derivative toggle
   network.py              # Network assembly, gradient check, and demo training loop
 docs/                     # Architecture and component guides
 requirements.txt          # Runtime dependencies

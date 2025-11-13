@@ -21,49 +21,53 @@ class OutputLayer:
     doing regression or binary outputs.
     """
 
-    params: Node
+    parameters: Node
     activation: UnaryActivation = softmax
-    last_input: FloatArray | None = field(default=None, init=False)
-    last_logits: FloatArray | None = field(default=None, init=False)
-    last_output: FloatArray | None = field(default=None, init=False)
+    cached_input_batch: FloatArray | None = field(default=None, init=False)
+    cached_logit_batch: FloatArray | None = field(default=None, init=False)
+    cached_activation: FloatArray | None = field(default=None, init=False)
 
-    def forward(self, inputs: FloatArray) -> FloatArray:
-        self.last_input = inputs
-        logits = inputs @ self.params.weights + self.params.biases
-        self.last_logits = logits
-        output = self.activation(logits)
-        self.last_output = output
-        return output
+    def forward(self, input_batch: FloatArray) -> FloatArray:
+        self.cached_input_batch = input_batch
+        logits = input_batch @ self.parameters.weight_matrix + self.parameters.bias_vector
+        self.cached_logit_batch = logits
+        activation_output = self.activation(logits)
+        self.cached_activation = activation_output
+        return activation_output
 
     def backward(
         self,
-        upstream_gradient: FloatArray,
+        output_gradient: FloatArray,
         *,
         apply_activation_derivative: bool = True,
     ) -> FloatArray:
-        if self.last_input is None or self.last_output is None:
+        if self.cached_input_batch is None or self.cached_activation is None:
             raise RuntimeError("forward must be called before backward.")
 
-        batch_size = upstream_gradient.shape[0]
+        sample_count = output_gradient.shape[0]
         if apply_activation_derivative:
-            activation_prime = self.activation.derivative(self.last_output)
-            delta = upstream_gradient * activation_prime
+            activation_derivative = self.activation.derivative(self.cached_activation)
+            post_activation_gradient = output_gradient * activation_derivative
         else:
-            delta = upstream_gradient
+            post_activation_gradient = output_gradient
 
-        self.params.grad_weights = (self.last_input.T @ delta) / batch_size
-        self.params.grad_biases = np.sum(delta, axis=0, keepdims=True) / batch_size
+        self.parameters.weight_gradients = (
+            self.cached_input_batch.T @ post_activation_gradient
+        ) / sample_count
+        self.parameters.bias_gradients = (
+            np.sum(post_activation_gradient, axis=0, keepdims=True) / sample_count
+        )
 
-        return delta @ self.params.weights.T
+        return post_activation_gradient @ self.parameters.weight_matrix.T
 
-    def parameters(self) -> list[tuple[FloatArray, FloatArray]]:
+    def parameter_pairs(self) -> list[tuple[FloatArray, FloatArray]]:
         return [
-            (self.params.weights, self.params.grad_weights),
-            (self.params.biases, self.params.grad_biases),
+            (self.parameters.weight_matrix, self.parameters.weight_gradients),
+            (self.parameters.bias_vector, self.parameters.bias_gradients),
         ]
 
     def predict(self, outputs: FloatArray | None = None) -> FloatArray:
-        scores = outputs if outputs is not None else self.last_output
+        scores = outputs if outputs is not None else self.cached_activation
         if scores is None:
             raise RuntimeError("No cached outputs to derive predictions from.")
         return np.argmax(scores, axis=1, keepdims=True)

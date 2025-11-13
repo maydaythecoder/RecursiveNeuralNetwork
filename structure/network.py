@@ -33,39 +33,40 @@ class NeuralNetwork:
     loss: LossFunction = field(default=cross_entropy)
     optimizer: Optimizer = field(default_factory=lambda: SGD(learning_rate=0.1))
 
-    def forward(self, inputs: FloatArray) -> FloatArray:
-        activations = self.input_layer.forward(inputs)
-        for layer in self.hidden_layers:
-            activations = layer.forward(activations)
-        return self.output_layer.forward(activations)
+    def forward(self, input_batch: FloatArray) -> FloatArray:
+        layer_outputs = self.input_layer.forward(input_batch)
+        for hidden_layer in self.hidden_layers:
+            layer_outputs = hidden_layer.forward(layer_outputs)
+        return self.output_layer.forward(layer_outputs)
 
     def backward(self, predictions: FloatArray, targets: FloatArray) -> None:
-        loss_gradient = self.loss.derivative(predictions, targets)
-        apply_activation = not (
+        loss_gradients = self.loss.derivative(predictions, targets)
+        should_apply_activation_derivative = not (
             self.loss is cross_entropy and self.output_layer.activation is softmax
         )
-        downstream = self.output_layer.backward(
-            loss_gradient, apply_activation_derivative=apply_activation
+        incoming_gradient = self.output_layer.backward(
+            loss_gradients,
+            apply_activation_derivative=should_apply_activation_derivative,
         )
-        for layer in reversed(self.hidden_layers):
-            downstream = layer.backward(downstream)
+        for hidden_layer in reversed(self.hidden_layers):
+            incoming_gradient = hidden_layer.backward(incoming_gradient)
 
     def parameter_grad_pairs(self) -> List[tuple[FloatArray, FloatArray]]:
-        parameter_pairs: List[tuple[FloatArray, FloatArray]] = []
-        for layer in self.hidden_layers:
-            parameter_pairs.extend(layer.parameters())
-        parameter_pairs.extend(self.output_layer.parameters())
-        return parameter_pairs
+        parameter_gradient_pairs: List[tuple[FloatArray, FloatArray]] = []
+        for hidden_layer in self.hidden_layers:
+            parameter_gradient_pairs.extend(hidden_layer.parameter_pairs())
+        parameter_gradient_pairs.extend(self.output_layer.parameter_pairs())
+        return parameter_gradient_pairs
 
     def zero_gradients(self) -> None:
-        for layer in self.hidden_layers:
-            layer.params.zero_gradients()
-        self.output_layer.params.zero_gradients()
+        for hidden_layer in self.hidden_layers:
+            hidden_layer.parameters.zero_gradients()
+        self.output_layer.parameters.zero_gradients()
 
-    def train_step(self, batch_inputs: FloatArray, batch_targets: FloatArray) -> float:
-        predictions = self.forward(batch_inputs)
-        loss_value = self.loss(predictions, batch_targets)
-        self.backward(predictions, batch_targets)
+    def train_step(self, training_inputs: FloatArray, training_targets: FloatArray) -> float:
+        predictions = self.forward(training_inputs)
+        loss_value = self.loss(predictions, training_targets)
+        self.backward(predictions, training_targets)
         self.optimizer.step(self.parameter_grad_pairs())
         self.zero_gradients()
         return loss_value
@@ -84,25 +85,25 @@ class NeuralNetwork:
         history: List[float] = []
 
         for _ in range(epochs):
-            indices = np.arange(num_samples)
+            sample_indices = np.arange(num_samples)
             if shuffle:
-                generator.shuffle(indices)
-            batches = [
-                indices[start : start + batch_size]
+                generator.shuffle(sample_indices)
+            batch_index_list = [
+                sample_indices[start : start + batch_size]
                 for start in range(0, num_samples, batch_size)
             ]
-            epoch_losses: List[float] = []
-            for batch_indices in batches:
+            epoch_loss_values: List[float] = []
+            for batch_indices in batch_index_list:
                 batch_inputs = inputs[batch_indices]
                 batch_targets = targets[batch_indices]
-                loss_value = self.train_step(batch_inputs, batch_targets)
-                epoch_losses.append(loss_value)
-            history.append(float(np.mean(epoch_losses)))
+                batch_loss = self.train_step(batch_inputs, batch_targets)
+                epoch_loss_values.append(batch_loss)
+            history.append(float(np.mean(epoch_loss_values)))
         return history
 
-    def predict(self, inputs: FloatArray) -> FloatArray:
-        probabilities = self.forward(inputs)
-        return self.output_layer.predict(probabilities)
+    def predict(self, input_batch: FloatArray) -> FloatArray:
+        probability_distribution = self.forward(input_batch)
+        return self.output_layer.predict(probability_distribution)
 
 
 def gradient_check(
@@ -122,32 +123,32 @@ def gradient_check(
     network.backward(predictions, targets)
 
     parameter_pairs = network.parameter_grad_pairs()
-    analytic_grads = [grad.copy() for _, grad in parameter_pairs]
-    params = [param for param, _ in parameter_pairs]
+    analytic_gradients = [grad.copy() for _, grad in parameter_pairs]
+    parameter_arrays = [param for param, _ in parameter_pairs]
 
-    max_diff = 0.0
-    for param, analytic in zip(params, analytic_grads):
-        iterator = np.nditer(param, flags=["multi_index"], op_flags=["readwrite"])
+    max_difference = 0.0
+    for parameters, analytic in zip(parameter_arrays, analytic_gradients):
+        iterator = np.nditer(parameters, flags=["multi_index"], op_flags=["readwrite"])
         while not iterator.finished:
             idx = iterator.multi_index
-            original = param[idx]
+            original_value = parameters[idx]
 
-            param[idx] = original + epsilon
+            parameters[idx] = original_value + epsilon
             plus_loss = network.loss(network.forward(inputs), targets)
 
-            param[idx] = original - epsilon
+            parameters[idx] = original_value - epsilon
             minus_loss = network.loss(network.forward(inputs), targets)
 
-            param[idx] = original
-            numerical = (plus_loss - minus_loss) / (2.0 * epsilon)
+            parameters[idx] = original_value
+            numerical_derivative = (plus_loss - minus_loss) / (2.0 * epsilon)
 
-            diff = float(abs(numerical - analytic[idx]))
-            if diff > max_diff:
-                max_diff = diff
+            difference = float(abs(numerical_derivative - analytic[idx]))
+            if difference > max_difference:
+                max_difference = difference
             iterator.iternext()
 
     network.zero_gradients()
-    return max_diff
+    return max_difference
 
 
 def make_toy_classification_dataset(
@@ -163,11 +164,11 @@ def make_toy_classification_dataset(
     generator = rng or np.random.default_rng(0)
     angles = generator.uniform(0.0, np.pi, size=samples_per_class)
     radius = 1.0 + 0.1 * generator.normal(size=samples_per_class)
-    class_a = np.stack([radius * np.cos(angles), radius * np.sin(angles)], axis=1)
+    class_a_samples = np.stack([radius * np.cos(angles), radius * np.sin(angles)], axis=1)
 
     angles_b = angles + np.pi
     radius_b = 1.0 + 0.1 * generator.normal(size=samples_per_class)
-    class_b = np.stack(
+    class_b_samples = np.stack(
         [
             radius_b * np.cos(angles_b) + 0.5,
             radius_b * np.sin(angles_b) - 0.2,
@@ -175,7 +176,7 @@ def make_toy_classification_dataset(
         axis=1,
     )
 
-    inputs = np.vstack([class_a, class_b]).astype(np.float64)
+    inputs = np.vstack([class_a_samples, class_b_samples]).astype(np.float64)
     labels = np.concatenate(
         [np.zeros(samples_per_class, dtype=np.int64), np.ones(samples_per_class, dtype=np.int64)]
     )
@@ -200,14 +201,14 @@ def build_demo_network(
     input_layer = InputLayer(input_dim=input_dim)
 
     hidden_layers: List[HiddenLayer] = []
-    prev_units = input_dim
+    previous_unit_count = input_dim
     for units in hidden_units:
-        params = Node.initialize(prev_units, units, rng=generator)
-        hidden_layers.append(HiddenLayer(params=params, activation=activation))
-        prev_units = units
+        hidden_parameters = Node.initialize(previous_unit_count, units, rng=generator)
+        hidden_layers.append(HiddenLayer(parameters=hidden_parameters, activation=activation))
+        previous_unit_count = units
 
-    output_params = Node.initialize(prev_units, output_dim, rng=generator)
-    output_layer = OutputLayer(params=output_params, activation=softmax)
+    output_parameters = Node.initialize(previous_unit_count, output_dim, rng=generator)
+    output_layer = OutputLayer(parameters=output_parameters, activation=softmax)
 
     return NeuralNetwork(
         input_layer=input_layer,
@@ -228,11 +229,11 @@ def demo_training_epoch() -> None:
     inputs, targets = make_toy_classification_dataset(samples_per_class=200)
     network = build_demo_network(input_dim=inputs.shape[1], hidden_units=(16, 16), output_dim=2)
 
-    initial_diff = gradient_check(network, inputs[:5], targets[:5])
-    print(f"Gradient check (max diff): {initial_diff:.6e}")
+    gradient_difference = gradient_check(network, inputs[:5], targets[:5])
+    print(f"Gradient check (max diff): {gradient_difference:.6e}")
 
-    losses = network.fit(inputs, targets, epochs=50, batch_size=32)
-    print(f"Final training loss: {losses[-1]:.4f}")
+    loss_history = network.fit(inputs, targets, epochs=50, batch_size=32)
+    print(f"Final training loss: {loss_history[-1]:.4f}")
 
     predictions = network.predict(inputs)
     accuracy = np.mean(predictions.flatten() == np.argmax(targets, axis=1))
@@ -246,4 +247,8 @@ __all__ = [
     "build_demo_network",
     "demo_training_epoch",
 ]
+
+
+if __name__ == "__main__":
+    demo_training_epoch()
 

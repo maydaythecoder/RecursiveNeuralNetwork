@@ -1,0 +1,4 @@
+__pycache__/
+./venv/
+./logic/__pycache__/
+./structure/__pycache__/

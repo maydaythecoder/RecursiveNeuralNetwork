@@ -8,13 +8,13 @@ from numpy.typing import NDArray
 
 
 FloatArray = NDArray[np.float64]
-ParamGrad = Tuple[FloatArray, FloatArray]
+ParameterGradientPair = Tuple[FloatArray, FloatArray]
 
 
 class Optimizer(Protocol):
     """Optimizer interface that mutates parameters in place."""
 
-    def step(self, params_and_grads: Iterable[ParamGrad]) -> None:
+    def step(self, parameter_gradient_pairs: Iterable[ParameterGradientPair]) -> None:
         raise NotImplementedError
 
 
@@ -35,12 +35,12 @@ class SGD:
         if self.max_grad_norm is not None and self.max_grad_norm <= 0.0:
             raise ValueError("max_grad_norm must be positive when supplied")
 
-    def step(self, params_and_grads: Iterable[ParamGrad]) -> None:
-        for parameters, gradients in params_and_grads:
+    def step(self, parameter_gradient_pairs: Iterable[ParameterGradientPair]) -> None:
+        for parameter_values, gradients in parameter_gradient_pairs:
             safe_gradients = gradients
             if self.max_grad_norm is not None:
                 safe_gradients = self._clip_gradients(gradients)
-            parameters -= self.learning_rate * safe_gradients
+            parameter_values -= self.learning_rate * safe_gradients
 
     def _clip_gradients(self, gradients: FloatArray) -> FloatArray:
         norm = np.linalg.norm(gradients)

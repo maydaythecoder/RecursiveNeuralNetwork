@@ -5,6 +5,8 @@
 Execute the built-in training script to see the entire pipeline:
 
 ``` bash
+cd /Users/muhyadinmohamed/Documents/Development/Python/RecursiveNeuralNetwork
+source venv/bin/activate
 python -m structure.network
 ```
 

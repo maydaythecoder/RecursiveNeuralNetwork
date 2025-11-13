@@ -8,12 +8,12 @@
 
 ## Parameter Management
 
-- `Node` encapsulates weight and bias tensors alongside gradient buffers. Opting for a dedicated container decouples layer logic from optimizer state and lowers the risk of mismatched shapes.
+- `Node` encapsulates `weight_matrix`/`bias_vector` tensors alongside gradient buffers. Opting for a dedicated container decouples layer logic from optimizer state and lowers the risk of mismatched shapes.
 - Weights use **He initialization** to maintain activation variance through ReLU-heavy networks. See the original paper for details: [Delving Deep into Rectifiers](https://arxiv.org/abs/1502.01852).
 
 ## Gradient Propagation
 
-- Backprop in `HiddenLayer` and `OutputLayer` follows the chain rule: multiply the upstream gradient by the activation derivative, accumulate batch-averaged parameter gradients, and propagate downstream gradients using the transpose of the weight matrix.
+- Backprop in `HiddenLayer` and `OutputLayer` follows the chain rule: multiply the upstream gradient by the activation derivative, accumulate batch-averaged parameter gradients, and propagate downstream gradients using the transpose of the cached `weight_matrix`.
 - `OutputLayer.backward` includes an `apply_activation_derivative` flag so cross-entropy with softmax can leverage the simplified gradient (`y_hat - y`). For the derivation, refer to [Stanford CS231n Notes](https://cs231n.github.io/linear-classify/#softmax).
 
 ## Optimization Loop
@@ -28,5 +28,5 @@
 
 ## Extensibility Considerations
 
-- New layers can conform to the same `forward/backward/parameters` interface, allowing plug-and-play experimentation.
+- New layers can conform to the same `forward/backward/parameter_pairs` interface, allowing plug-and-play experimentation.
 - Switching to different losses or activations requires only swapping imports in `structure/network.py`, thanks to the `LossFunction` and `UnaryActivation` abstractions.

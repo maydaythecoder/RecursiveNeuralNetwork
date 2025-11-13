@@ -1,4 +1,4 @@
-from __future__ import annotationsf
+from __future__ import annotations
 from dataclasses import dataclass, field
 from numpy.typing import NDArray
 
@@ -19,37 +19,41 @@ class HiddenLayer:
     of `(parameters, gradients)` pairs across layers.
     """
 
-    params: Node
     activation: UnaryActivation
-    last_input: FloatArray | None = field(default=None, init=False)
-    last_linear_output: FloatArray | None = field(default=None, init=False)
-    last_output: FloatArray | None = field(default=None, init=False)
+    parameters: Node
+    cached_input_batch: FloatArray | None = field(default=None, init=False)
+    cached_weighted_sum: FloatArray | None = field(default=None, init=False)
+    cached_activation: FloatArray | None = field(default=None, init=False)
 
-    def forward(self, inputs: FloatArray) -> FloatArray:
-        self.last_input = inputs
-        linear_output = inputs @ self.params.weights + self.params.biases
-        self.last_linear_output = linear_output
-        activated = self.activation(linear_output)
-        self.last_output = activated
-        return activated
+    def forward(self, input_batch: FloatArray) -> FloatArray:
+        self.cached_input_batch = input_batch
+        weighted_sum = input_batch @ self.parameters.weight_matrix + self.parameters.bias_vector
+        self.cached_weighted_sum = weighted_sum
+        activation_output = self.activation(weighted_sum)
+        self.cached_activation = activation_output
+        return activation_output
 
-    def backward(self, upstream_gradient: FloatArray) -> FloatArray:
-        if self.last_input is None or self.last_output is None:
+    def backward(self, output_gradient: FloatArray) -> FloatArray:
+        if self.cached_input_batch is None or self.cached_activation is None:
             raise RuntimeError("forward must be called before backward.")
 
-        batch_size = upstream_gradient.shape[0]
-        activation_prime = self.activation.derivative(self.last_output)
-        delta = upstream_gradient * activation_prime
+        sample_count = output_gradient.shape[0]
+        activation_derivative = self.activation.derivative(self.cached_activation)
+        post_activation_gradient = output_gradient * activation_derivative
 
-        self.params.grad_weights = (self.last_input.T @ delta) / batch_size
-        self.params.grad_biases = np.sum(delta, axis=0, keepdims=True) / batch_size
+        self.parameters.weight_gradients = (
+            self.cached_input_batch.T @ post_activation_gradient
+        ) / sample_count
+        self.parameters.bias_gradients = (
+            np.sum(post_activation_gradient, axis=0, keepdims=True) / sample_count
+        )
 
-        return delta @ self.params.weights.T
+        return post_activation_gradient @ self.parameters.weight_matrix.T
 
-    def parameters(self) -> list[tuple[FloatArray, FloatArray]]:
+    def parameter_pairs(self) -> list[tuple[FloatArray, FloatArray]]:
         return [
-            (self.params.weights, self.params.grad_weights),
-            (self.params.biases, self.params.grad_biases),
+            (self.parameters.weight_matrix, self.parameters.weight_gradients),
+            (self.parameters.bias_vector, self.parameters.bias_gradients),
         ]
 
 

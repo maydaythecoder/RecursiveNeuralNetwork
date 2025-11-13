@@ -18,19 +18,19 @@ class InputLayer:
     """
 
     input_dim: int
-    last_output: FloatArray | None = None
+    cached_input_batch: FloatArray | None = None
 
-    def forward(self, inputs: FloatArray) -> FloatArray:
-        if inputs.shape[1] != self.input_dim:
+    def forward(self, input_batch: FloatArray) -> FloatArray:
+        if input_batch.shape[1] != self.input_dim:
             raise ValueError(
-                f"Expected input dimension {self.input_dim}, received {inputs.shape[1]}"
+                f"Expected input dimension {self.input_dim}, received {input_batch.shape[1]}"
             )
-        self.last_output = inputs
-        return inputs
+        self.cached_input_batch = input_batch
+        return input_batch
 
-    def backward(self, upstream_gradient: FloatArray) -> FloatArray:
+    def backward(self, output_gradient: FloatArray) -> FloatArray:
         # SAFETY: Input layer has no parameters, so upstream gradient flows through untouched.
-        return upstream_gradient
+        return output_gradient
 
 
 __all__ = ["InputLayer"]

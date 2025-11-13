@@ -16,17 +16,17 @@ class Node:
     Container for dense-layer parameters.
 
     The gradients are stored alongside the parameters to keep modules stateless with respect to
-    optimizers; upstream training code collects `(weights, grads)` pairs from each layer.
+    optimizers; upstream training code collects `(parameters, gradients)` pairs from each layer.
     """
 
-    weights: FloatArray
-    biases: FloatArray
-    grad_weights: FloatArray = field(init=False)
-    grad_biases: FloatArray = field(init=False)
+    weight_matrix: FloatArray
+    bias_vector: FloatArray
+    weight_gradients: FloatArray = field(init=False)
+    bias_gradients: FloatArray = field(init=False)
 
     def __post_init__(self) -> None:
-        self.grad_weights = np.zeros_like(self.weights)
-        self.grad_biases = np.zeros_like(self.biases)
+        self.weight_gradients = np.zeros_like(self.weight_matrix)
+        self.bias_gradients = np.zeros_like(self.bias_vector)
 
     @classmethod
     def initialize(
@@ -46,14 +46,17 @@ class Node:
         limit = np.sqrt(2.0 / float(input_dim))
         weights = generator.normal(loc=0.0, scale=limit, size=(input_dim, output_dim))
         biases = np.zeros((1, output_dim), dtype=np.float64)
-        return cls(weights=weights.astype(np.float64), biases=biases)
+        return cls(
+            weight_matrix=weights.astype(np.float64),
+            bias_vector=biases,
+        )
 
     def parameter_shapes(self) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
-        return self.weights.shape, self.biases.shape
+        return self.weight_matrix.shape, self.bias_vector.shape
 
     def zero_gradients(self) -> None:
-        self.grad_weights.fill(0.0)
-        self.grad_biases.fill(0.0)
+        self.weight_gradients.fill(0.0)
+        self.bias_gradients.fill(0.0)
 
 
 __all__ = ["Node"]
